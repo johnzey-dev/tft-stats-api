@@ -1,0 +1,181 @@
+{
+  "info": {
+    "name": "Riot API – TFT Direct",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "api_key",
+      "value": "RGAPI-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+      "type": "string"
+    },
+    {
+      "key": "platform",
+      "value": "euw1",
+      "type": "string",
+      "description": "na1 | euw1 | eun1 | kr | br1 | la1 | la2 | oc1 | jp1 | ru | tr1"
+    },
+    {
+      "key": "region",
+      "value": "europe",
+      "type": "string",
+      "description": "americas | europe | asia | sea"
+    },
+    { "key": "game_name", "value": "YourName", "type": "string" },
+    { "key": "tag_line", "value": "EUW", "type": "string" },
+    {
+      "key": "puuid",
+      "value": "",
+      "type": "string",
+      "description": "Auto-filled by 'Get Account' test script"
+    },
+    {
+      "key": "match_id",
+      "value": "",
+      "type": "string",
+      "description": "Copy a match ID from the match list response"
+    }
+  ],
+  "item": [
+    {
+      "name": "1 – Get Account by Riot ID",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "X-Riot-Token", "value": "{{api_key}}" }],
+        "url": {
+          "raw": "https://{{region}}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{{game_name}}/{{tag_line}}",
+          "protocol": "https",
+          "host": ["{{region}}.api.riotgames.com"],
+          "path": [
+            "riot",
+            "account",
+            "v1",
+            "accounts",
+            "by-riot-id",
+            "{{game_name}}",
+            "{{tag_line}}"
+          ]
+        },
+        "description": "Returns gameName, tagLine and puuid. The test script below saves the puuid as a collection variable so all subsequent requests use it automatically."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json.puuid) {",
+              "    pm.collectionVariables.set('puuid', json.puuid);",
+              "    console.log('puuid saved:', json.puuid);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 – Get TFT Summoner (by PUUID)",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "X-Riot-Token", "value": "{{api_key}}" }],
+        "url": {
+          "raw": "https://{{platform}}.api.riotgames.com/tft/summoner/v1/summoners/by-puuid/{{puuid}}",
+          "protocol": "https",
+          "host": ["{{platform}}.api.riotgames.com"],
+          "path": [
+            "tft",
+            "summoner",
+            "v1",
+            "summoners",
+            "by-puuid",
+            "{{puuid}}"
+          ]
+        },
+        "description": "Returns summonerLevel, profileIconId, summonerId."
+      }
+    },
+    {
+      "name": "3 – Get TFT Ranked Stats (by PUUID)",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "X-Riot-Token", "value": "{{api_key}}" }],
+        "url": {
+          "raw": "https://{{platform}}.api.riotgames.com/tft/league/v1/by-puuid/{{puuid}}",
+          "protocol": "https",
+          "host": ["{{platform}}.api.riotgames.com"],
+          "path": ["tft", "league", "v1", "by-puuid", "{{puuid}}"]
+        },
+        "description": "Returns an array of league entries. Look for queueType = RANKED_TFT for the main ranked queue."
+      }
+    },
+    {
+      "name": "4 – Get Ranked Match IDs",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "X-Riot-Token", "value": "{{api_key}}" }],
+        "url": {
+          "raw": "https://{{region}}.api.riotgames.com/tft/match/v1/matches/by-puuid/{{puuid}}/ids?type=ranked&start=0&count=200",
+          "protocol": "https",
+          "host": ["{{region}}.api.riotgames.com"],
+          "path": [
+            "tft",
+            "match",
+            "v1",
+            "matches",
+            "by-puuid",
+            "{{puuid}}",
+            "ids"
+          ],
+          "query": [
+            {
+              "key": "type",
+              "value": "ranked",
+              "description": "ranked | normal | tutorial | turbo"
+            },
+            {
+              "key": "start",
+              "value": "0",
+              "description": "Pagination offset"
+            },
+            {
+              "key": "count",
+              "value": "200",
+              "description": "Max per page (API cap: 200)"
+            }
+          ]
+        },
+        "description": "Returns an array of match ID strings. Max 200 per call. Increment 'start' by 200 to paginate."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const ids = pm.response.json();",
+              "if (Array.isArray(ids) && ids.length > 0) {",
+              "    pm.collectionVariables.set('match_id', ids[0]);",
+              "    console.log('First match ID saved:', ids[0]);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 – Get Match Detail",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "X-Riot-Token", "value": "{{api_key}}" }],
+        "url": {
+          "raw": "https://{{region}}.api.riotgames.com/tft/match/v1/matches/{{match_id}}",
+          "protocol": "https",
+          "host": ["{{region}}.api.riotgames.com"],
+          "path": ["tft", "match", "v1", "matches", "{{match_id}}"]
+        },
+        "description": "Returns full match data: all 8 participants with placements, traits, units, augments, items.\n\nThe match_id variable is auto-filled by the test script in request 4, or paste one manually."
+      }
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+{
+  "info": {
+    "name": "TFT Stats API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5001",
+      "type": "string"
+    },
+    {
+      "key": "platform",
+      "value": "na1",
+      "type": "string"
+    },
+    {
+      "key": "game_name",
+      "value": "YourGameName",
+      "type": "string"
+    },
+    {
+      "key": "tag_line",
+      "value": "NA1",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Get TFT Stats",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/tft-stats/{{platform}}/{{game_name}}/{{tag_line}}",
+          "host": ["{{base_url}}"],
+          "path": ["tft-stats", "{{platform}}", "{{game_name}}", "{{tag_line}}"]
+        },
+        "description": "Returns full TFT stats for a player: summoner info, ranked data, average placement, and all ranked match history with traits, units, augments and CDragon icon URLs.\n\nPlatform options: na1, euw1, eun1, kr, br1, la1, la2, oc1, jp1, ru, tr1"
+      },
+      "response": [
+        {
+          "name": "200 – Success",
+          "status": "OK",
+          "code": 200,
+          "originalRequest": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/tft-stats/na1/Doublelift/NA1",
+              "host": ["{{base_url}}"],
+              "path": ["tft-stats", "na1", "Doublelift", "NA1"]
+            }
+          },
+          "body": "{\n  \"summoner\": {\n    \"name\": \"Doublelift\",\n    \"level\": 450,\n    \"profile_icon_id\": 6\n  },\n  \"ranked\": {\n    \"tier\": \"DIAMOND\",\n    \"tier_icon_url\": \"https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-mini-crests/diamond.png\",\n    \"rank\": \"II\",\n    \"lp\": 75,\n    \"wins\": 120,\n    \"losses\": 98,\n    \"hot_streak\": false\n  },\n  \"average_placement\": 4.12,\n  \"average_placement_sample\": 218,\n  \"last_matches\": [\n    {\n      \"match_id\": \"NA1_1234567890\",\n      \"placement\": 2,\n      \"level\": 9,\n      \"gold_left\": 3,\n      \"last_round\": 34,\n      \"players_eliminated\": 2,\n      \"total_damage_to_players\": 98,\n      \"time_eliminated\": 2145.3,\n      \"augments\": [\"TFT9_Augment_TwinTerrors\"],\n      \"traits\": [\n        {\n          \"name\": \"TFT16_Bruiser\",\n          \"icon_url\": \"https://raw.communitydragon.org/latest/game/assets/ux/traiticons/trait_icon_16_bruiser.png\",\n          \"num_units\": 4,\n          \"style\": 2,\n          \"tier_current\": 2,\n          \"tier_total\": 3\n        }\n      ],\n      \"units\": [\n        {\n          \"character_id\": \"TFT16_Briar\",\n          \"icon_url\": \"https://raw.communitydragon.org/latest/game/assets/characters/tft16_briar/hud/tft16_briar_square.tft_set16.png\",\n          \"rarity\": 4,\n          \"stars\": 2,\n          \"items\": [\"TFT_Item_BlueBuff\"]\n        }\n      ]\n    }\n  ]\n}"
+        },
+        {
+          "name": "400 – Unknown platform",
+          "status": "Bad Request",
+          "code": 400,
+          "originalRequest": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/tft-stats/xyz/SomePlayer/TAG",
+              "host": ["{{base_url}}"],
+              "path": ["tft-stats", "xyz", "SomePlayer", "TAG"]
+            }
+          },
+          "body": "{\n  \"error\": \"Unknown platform: xyz\"\n}"
+        },
+        {
+          "name": "404 – Player not found",
+          "status": "Not Found",
+          "code": 404,
+          "originalRequest": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/tft-stats/na1/NonExistentPlayer99999/NA1",
+              "host": ["{{base_url}}"],
+              "path": ["tft-stats", "na1", "NonExistentPlayer99999", "NA1"]
+            }
+          },
+          "body": "{\n  \"error\": \"404 Client Error: Not Found for url: ...\"\n}"
+        },
+        {
+          "name": "503 – Riot API unreachable",
+          "status": "Service Unavailable",
+          "code": 503,
+          "originalRequest": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/tft-stats/na1/SomePlayer/NA1",
+              "host": ["{{base_url}}"],
+              "path": ["tft-stats", "na1", "SomePlayer", "NA1"]
+            }
+          },
+          "body": "{\n  \"error\": \"Failed to reach Riot API\",\n  \"details\": \"...\"\n}"
+        }
+      ]
+    }
+  ]
+}
