@@ -8,6 +8,7 @@ from flask import Blueprint, Response, jsonify
 
 from services.stats_service import StatsService
 from utils.svg_builder import build_composition_svg, build_matches_svg
+from utils.svg_to_png import svg_to_png
 
 log = logging.getLogger(__name__)
 
@@ -83,6 +84,27 @@ def get_match_svg(
 
 
 @stats_bp.route(
+    "/tft-stats/<platform>/<game_name>/<tag_line>/<match_id>/png", methods=["GET"]
+)
+def get_match_png(
+    platform: str, game_name: str, tag_line: str, match_id: str
+) -> Response | tuple[Any, int]:
+    log.info("PNG request: %s/%s/%s  match=%s", platform, game_name, tag_line, match_id)
+    try:
+        puuid = stats_service.resolve_puuid(platform, game_name, tag_line)
+    except (requests.exceptions.HTTPError, requests.exceptions.RequestException) as exc:
+        return _handle_riot_error(exc)
+
+    match = stats_service.get_match(puuid, match_id)
+    if not match:
+        return jsonify({"error": "Match not found in cache."}), 404
+
+    svg = build_composition_svg(match.model_dump())
+    png = svg_to_png(svg, scale=2.0)
+    return Response(png, status=200, mimetype="image/png")
+
+
+@stats_bp.route(
     "/tft-stats/<platform>/<game_name>/<tag_line>/svg", methods=["GET"]
 )
 def get_player_svg(
@@ -114,3 +136,34 @@ def get_player_svg(
     )
     log.info("5-game SVG built for %d matches", len(recent))
     return Response(svg, status=200, mimetype="image/svg+xml")
+
+
+@stats_bp.route(
+    "/tft-stats/<platform>/<game_name>/<tag_line>/png", methods=["GET"]
+)
+def get_player_png(
+    platform: str, game_name: str, tag_line: str
+) -> Response | tuple[Any, int]:
+    """Return a PNG of the last 5 games — works on GitHub profiles."""
+    log.info("PNG (5-game) request: %s/%s/%s", platform, game_name, tag_line)
+    try:
+        puuid = stats_service.resolve_puuid(platform, game_name, tag_line)
+    except (requests.exceptions.HTTPError, requests.exceptions.RequestException) as exc:
+        return _handle_riot_error(exc)
+
+    recent = stats_service.get_recent_matches(puuid)
+    if not recent:
+        return jsonify({"error": "No cached matches found. Call the stats endpoint first."}), 404
+
+    try:
+        profile = stats_service.get_player_profile(platform, game_name, tag_line, puuid)
+    except (requests.exceptions.HTTPError, requests.exceptions.RequestException) as exc:
+        return _handle_riot_error(exc)
+
+    svg = build_matches_svg(
+        [m.model_dump() for m in recent],
+        player_profile=profile.model_dump(),
+    )
+    png = svg_to_png(svg, scale=2.0)
+    log.info("5-game PNG built for %d matches", len(recent))
+    return Response(png, status=200, mimetype="image/png")

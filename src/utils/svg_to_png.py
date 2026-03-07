@@ -1,25 +1,64 @@
-"""svg_to_png — convert an SVG string to PNG bytes using svglib + Pillow.
+"""svg_to_png — convert an SVG string to PNG bytes using cairosvg.
 
-``svglib`` renders the SVG (including ``<image>`` tags with data-URI sources)
-via ReportLab, then Pillow is used to scale the result to the desired
-resolution.  Both are pure-Python wheels with no native system dependencies.
+cairosvg is a full SVG renderer built on Cairo/Pango. It correctly renders
+<image> tags with data URI sources, text, rounded rects, clipPaths, and opacity.
 
-Install: ``pip install svglib reportlab Pillow``
+Before rendering we replace all raw.githubusercontent.com hrefs with base64
+data URIs read from the local src/assets/ copies so no HTTP requests are made.
+
+Install: ``pip install cairosvg``
 """
 
 from __future__ import annotations
 
-import io
-import tempfile
-import os
+import base64
+import re
+from pathlib import Path
 
-from PIL import Image
-from reportlab.graphics import renderPM
-from svglib.svglib import svg2rlg
+import cairosvg
+
+# Path to the local assets directory (same tree committed to GitHub)
+_ASSETS_DIR = Path(__file__).parent.parent / "assets"
+
+# The GitHub raw prefix used in the SVG hrefs
+_GITHUB_RAW = "https://raw.githubusercontent.com/johnzey-dev/tft-stats-api/main/src/assets"
+
+_HREF_RE = re.compile(r'href="(https://raw\.githubusercontent\.com/[^"]+)"')
+
+
+def _github_url_to_local(url: str) -> Path | None:
+    """Map a raw.githubusercontent.com asset URL to its local path."""
+    if not url.startswith(_GITHUB_RAW):
+        return None
+    rel = url[len(_GITHUB_RAW):].lstrip("/")
+    return _ASSETS_DIR / rel
+
+
+def _to_data_uri(path: Path) -> str | None:
+    """Read a local PNG and return a base64 data URI string."""
+    if not path.exists():
+        return None
+    data = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:image/png;base64,{data}"
+
+
+def _inline_images(svg: str) -> str:
+    """Replace GitHub raw URLs in href= attributes with local data URIs."""
+    def replacer(m: re.Match) -> str:
+        url = m.group(1)
+        local = _github_url_to_local(url)
+        if local is None:
+            return m.group(0)
+        data_uri = _to_data_uri(local)
+        if data_uri is None:
+            return m.group(0)
+        return f'href="{data_uri}"'
+
+    return _HREF_RE.sub(replacer, svg)
 
 
 def svg_to_png(svg: str, scale: float = 2.0) -> bytes:
-    """Convert *svg* (a string) to PNG bytes.
+    """Convert *svg* (a string) to PNG bytes using cairosvg.
 
     Args:
         svg:   The SVG markup to render.
@@ -28,35 +67,10 @@ def svg_to_png(svg: str, scale: float = 2.0) -> bytes:
     Returns:
         Raw PNG bytes.
     """
-    # svglib requires a file path, so write to a named temp file
-    with tempfile.NamedTemporaryFile(
-        suffix=".svg", delete=False, mode="w", encoding="utf-8"
-    ) as f:
-        f.write(svg)
-        tmp_path = f.name
+    # Replace all GitHub raw URLs with local base64 data URIs so cairosvg
+    # can render them without making HTTP requests.
+    svg = _inline_images(svg)
 
-    try:
-        drawing = svg2rlg(tmp_path)
-    finally:
-        os.unlink(tmp_path)
-
-    if drawing is None:
-        raise ValueError("svglib could not parse the SVG document")
-
-    # Render at 1× first into a buffer
-    buf = io.BytesIO()
-    renderPM.drawToFile(drawing, buf, fmt="PNG", dpi=96)
-    buf.seek(0)
-
-    if scale == 1.0:
-        return buf.read()
-
-    # Upscale with Pillow using high-quality resampling
-    img = Image.open(buf)
-    new_w = round(img.width * scale)
-    new_h = round(img.height * scale)
-    img = img.resize((new_w, new_h), Image.LANCZOS)
-
-    out = io.BytesIO()
-    img.save(out, format="PNG")
-    return out.getvalue()
+    # cairosvg renders SVG to PNG directly, with scale support via dpi
+    # Default browser DPI is 96; multiply by scale for retina output
+    return cairosvg.svg2png(bytestring=svg.encode("utf-8"), scale=scale)
