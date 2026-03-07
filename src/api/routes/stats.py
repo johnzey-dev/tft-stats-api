@@ -166,4 +166,6 @@ def get_player_png(
     )
     png = svg_to_png(svg, scale=2.0)
     log.info("5-game PNG built for %d matches", len(recent))
-    return Response(png, status=200, mimetype="image/png")
+    resp = Response(png, status=200, mimetype="image/png")
+    resp.headers["Cache-Control"] = "no-cache, max-age=0"
+    return resp

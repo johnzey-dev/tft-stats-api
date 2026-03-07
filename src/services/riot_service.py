@@ -25,11 +25,26 @@ class RiotService:
             raise ValueError(f"Unknown platform: {platform}")
         return f"https://{region}.api.riotgames.com"
 
-    def _get(self, url: str, **kwargs) -> dict | list:
-        """Perform a GET request and return parsed JSON, raising on HTTP errors."""
-        response = requests.get(url, headers=self._headers, **kwargs)
+    def _get(self, url: str, max_retries: int = 5, **kwargs) -> dict | list:
+        """Perform a GET request and return parsed JSON, raising on HTTP errors.
+
+        Automatically retries on HTTP 429 (Too Many Requests), honouring the
+        ``Retry-After`` header with exponential back-off as a fallback.
+        """
+        for attempt in range(max_retries):
+            response = requests.get(url, headers=self._headers, **kwargs)
+            if response.status_code == 429:
+                retry_after = int(response.headers.get("Retry-After", 2 ** attempt))
+                log.warning(
+                    "Rate limited (attempt %d/%d) — sleeping %ds  url=%s",
+                    attempt + 1, max_retries, retry_after, url,
+                )
+                time.sleep(retry_after)
+                continue
+            response.raise_for_status()
+            return response.json()
+        # Final attempt after exhausting retries
         response.raise_for_status()
-        return response.json()
 
     # ── Public API ────────────────────────────────────────────────────────────
 

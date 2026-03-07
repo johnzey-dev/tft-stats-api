@@ -34,12 +34,25 @@ def _github_url_to_local(url: str) -> Path | None:
     return _ASSETS_DIR / rel
 
 
+# In-process cache: path → data URI string (populated on first render, reused forever)
+_DATA_URI_CACHE: dict[str, str] = {}
+
+
 def _to_data_uri(path: Path) -> str | None:
-    """Read a local PNG and return a base64 data URI string."""
+    """Read a local PNG and return a base64 data URI string.
+
+    Results are cached in ``_DATA_URI_CACHE`` so each file is read from disk
+    only once per server process — subsequent PNG renders are pure CPU work.
+    """
+    key = str(path)
+    if key in _DATA_URI_CACHE:
+        return _DATA_URI_CACHE[key]
     if not path.exists():
         return None
     data = base64.b64encode(path.read_bytes()).decode("ascii")
-    return f"data:image/png;base64,{data}"
+    uri = f"data:image/png;base64,{data}"
+    _DATA_URI_CACHE[key] = uri
+    return uri
 
 
 def _inline_images(svg: str) -> str:

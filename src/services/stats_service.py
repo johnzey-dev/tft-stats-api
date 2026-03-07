@@ -13,6 +13,7 @@ making both easy to swap or mock in tests.
 from __future__ import annotations
 
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 from unit_of_work import SqlAlchemyUnitOfWork
@@ -27,6 +28,15 @@ log = logging.getLogger(__name__)
 
 MATCH_LIMIT: int = 5
 CACHE_BATCH_SIZE: int = 10
+
+# ── In-memory TTL caches (survive across requests, reset on server restart) ──
+# Key: (game_name.lower(), tag_line.lower())  →  (puuid, expires_at)
+_PUUID_CACHE: dict[tuple[str, str], tuple[str, float]] = {}
+# Key: (platform, game_name.lower(), tag_line.lower())  →  (PlayerProfileSchema, expires_at)
+_PROFILE_CACHE: dict[tuple[str, str, str], tuple[object, float]] = {}
+
+_PUUID_TTL:   int = 3600   # 1 hour  — puuid never changes
+_PROFILE_TTL: int = 300    # 5 min   — rank/LP can change
 
 
 class StatsService:
@@ -50,20 +60,27 @@ class StatsService:
     def _resolve_puuid(
         self, platform: str, game_name: str, tag_line: str
     ) -> str:
-        """Return the player's *puuid* from the local cache or Riot API.
+        """Return the player's *puuid* from memory cache, DB cache, or Riot API.
 
-        Checks :class:`~repositories.user_repo.UserRepository` first to avoid
-        an unnecessary Riot API round-trip for known players.
+        Priority: in-memory TTL cache → SQLite users table → Riot API.
         """
+        key = (game_name.lower(), tag_line.lower())
+        cached = _PUUID_CACHE.get(key)
+        if cached and time.time() < cached[1]:
+            log.debug("puuid memory-cache hit for %s#%s", game_name, tag_line)
+            return cached[0]
+
         with SqlAlchemyUnitOfWork() as uow:
             user = uow.users.find_by_riot_id(game_name, tag_line)
 
         if user:
-            log.debug("User cache hit: puuid=%.12s...", user.puuid)
+            log.debug("User DB cache hit: puuid=%.12s...", user.puuid)
+            _PUUID_CACHE[key] = (user.puuid, time.time() + _PUUID_TTL)
             return user.puuid
 
         log.debug("User not in DB, resolving via Riot API")
         account = self._riot.get_account_by_riot_id(platform, game_name, tag_line)
+        _PUUID_CACHE[key] = (account.puuid, time.time() + _PUUID_TTL)
         return account.puuid
 
     def _ensure_cached(self, platform: str, match_ids: list[str]) -> None:
@@ -173,9 +190,15 @@ class StatsService:
     ) -> PlayerProfileSchema:
         """Fetch summoner + league data and return a :class:`~schemas.player.PlayerProfileSchema`.
 
-        Concurrently resolves both Riot endpoints, then attaches the cached
-        set summary computed from local DB data.
+        Results are cached in memory for :data:`_PROFILE_TTL` seconds to avoid
+        hammering the Riot API on every GitHub README load.
         """
+        pkey = (platform, game_name.lower(), tag_line.lower())
+        pcached = _PROFILE_CACHE.get(pkey)
+        if pcached and time.time() < pcached[1]:
+            log.debug("Profile memory-cache hit for %s#%s", game_name, tag_line)
+            return pcached[0]  # type: ignore[return-value]
+
         with ThreadPoolExecutor(max_workers=2) as executor:
             f_summoner = executor.submit(self._riot.get_summoner,       platform, puuid)
             f_league   = executor.submit(self._riot.get_league_entries, platform, puuid)
@@ -185,7 +208,7 @@ class StatsService:
         ranked: LeagueEntrySchema | None = self._ranked_entry(league)
         summary: SetSummarySchema = self._ingestion.get_set_summary(puuid)
 
-        return PlayerProfileSchema(
+        profile = PlayerProfileSchema(
             game_name=game_name,
             tag_line=tag_line,
             platform=platform,
@@ -196,6 +219,8 @@ class StatsService:
             lp=ranked.leaguePoints    if ranked else None,
             set_summary=summary,
         )
+        _PROFILE_CACHE[pkey] = (profile, time.time() + _PROFILE_TTL)
+        return profile
 
     def get_recent_matches(self, puuid: str) -> list[MatchSchema]:
         """Return the last :data:`MATCH_LIMIT` cached matches for *puuid*."""
