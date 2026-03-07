@@ -236,6 +236,34 @@ def get_player_svg(platform, game_name, tag_line):
             'error': 'No cached matches found. Call the player stats endpoint first to populate the cache.'
         }), 404
 
+    # Fetch profile metadata for the banner header
+    try:
+        summoner       = riot_service.get_player_stats(platform, puuid)
+        league_entries = riot_service.get_league_stats(platform, puuid)
+    except requests.exceptions.HTTPError as e:
+        if e.response is not None and e.response.status_code == 401:
+            return jsonify({
+                'error': 'Unauthorized from Riot API. Verify RIOT_API_KEY is set, valid, and not expired.',
+                'details': str(e),
+            }), 401
+        return jsonify({'error': str(e)}), e.response.status_code
+    except requests.exceptions.RequestException as e:
+        return jsonify({'error': 'Failed to reach Riot API', 'details': str(e)}), 503
+
+    ranked = next((e for e in league_entries if e.get('queueType') == 'RANKED_TFT'), None)
+
+    player_profile = {
+        'game_name':       game_name,
+        'tag_line':        tag_line,
+        'platform':        platform,
+        'queue_label':     'Ranked',
+        'profile_icon_id': summoner.get('profileIconId'),
+        'tier':            ranked.get('tier')         if ranked else None,
+        'rank':            ranked.get('rank')         if ranked else None,
+        'lp':              ranked.get('leaguePoints') if ranked else None,
+        'set_summary':     cache_service.get_set_summary(puuid),
+    }
+
     matches = [
         {
             'placement': ums.placement,
@@ -261,6 +289,6 @@ def get_player_svg(platform, game_name, tag_line):
         for ums in recent
     ]
 
-    svg = build_matches_svg(matches)
+    svg = build_matches_svg(matches, player_profile=player_profile)
     log.info("5-game SVG built for %d matches", len(matches))
     return Response(svg, status=200, mimetype='image/svg+xml')

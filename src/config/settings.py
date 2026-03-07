@@ -1,7 +1,8 @@
 import os
 
 class Config:
-    RIOT_API_KEY = os.getenv('RIOT_API_KEY')
+    RIOT_API_KEY   = os.getenv('RIOT_API_KEY')
+    CURRENT_SET    = int(os.getenv('CURRENT_SET', '16'))  # update each new TFT set
     TIMEOUT = 10  # seconds
 
     # SQLite via SQLAlchemy — file lives at project root

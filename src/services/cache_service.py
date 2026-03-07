@@ -2,6 +2,7 @@ import logging
 
 from sqlalchemy.dialects.sqlite import insert
 
+from config.settings import Config
 from extensions import db
 from models.item import Item
 from models.match import Match
@@ -182,22 +183,52 @@ class MatchCache:
                 UserMatchStats.puuid == puuid,
                 UserMatchStats.match_id.in_(match_ids),
             )
+            .join(Match, Match.match_id == UserMatchStats.match_id)
+            .filter(Match.tft_set_number == Config.CURRENT_SET)
             .all()
         )
-        log.info("Participant stats loaded: %d/%d rows from DB", len(rows), len(match_ids))
+        log.info("Participant stats loaded: %d/%d rows from DB (set=%d)",
+                 len(rows), len(match_ids), Config.CURRENT_SET)
         return rows
 
     def get_recent_participant_stats(self, puuid, limit=5):
-        """Return the N most recent participant stats for a player ordered by game time."""
-        log.debug("Loading recent participant stats  puuid=%.12s...  limit=%d", puuid, limit)
+        """Return the N most recent participant stats for a player from the current TFT set."""
+        log.debug("Loading recent participant stats  puuid=%.12s...  limit=%d  set=%d",
+                  puuid, limit, Config.CURRENT_SET)
         rows = (
             UserMatchStats.query
             .filter(UserMatchStats.puuid == puuid)
             .join(Match, Match.match_id == UserMatchStats.match_id)
+            .filter(Match.tft_set_number == Config.CURRENT_SET)
             .order_by(Match.game_datetime.desc())
             .limit(limit)
             .all()
         )
-        log.info("Recent participant stats: %d rows (limit=%d)", len(rows), limit)
+        log.info("Recent participant stats: %d rows (limit=%d, set=%d)",
+                 len(rows), limit, Config.CURRENT_SET)
         return rows
+
+    def get_set_summary(self, puuid):
+        """Return avg placement, top-4 count, win count and total games for the current set."""
+        rows = (
+            UserMatchStats.query
+            .filter(UserMatchStats.puuid == puuid)
+            .join(Match, Match.match_id == UserMatchStats.match_id)
+            .filter(Match.tft_set_number == Config.CURRENT_SET)
+            .with_entities(UserMatchStats.placement, UserMatchStats.win)
+            .all()
+        )
+        total      = len(rows)
+        placements = [r.placement for r in rows if r.placement is not None]
+        wins       = sum(1 for r in rows if r.win)
+        top4       = sum(1 for p in placements if p <= 4)
+        avg        = round(sum(placements) / len(placements), 2) if placements else None
+        log.info("Set summary  puuid=%.12s...  total=%d  avg=%.2f  top4=%d  wins=%d",
+                 puuid, total, avg or 0, top4, wins)
+        return {
+            'total_games': total,
+            'avg_placement': avg,
+            'top4_count': top4,
+            'win_count': wins,
+        }
 
