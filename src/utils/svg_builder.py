@@ -1,31 +1,31 @@
-"""SVG renderer for TFT match history cards, styled to match MetaTFT."""
+"""SVG renderer for TFT match history cards, styled to match MetaTFT.
+
+Images are referenced as raw.githubusercontent.com URLs pointing to assets
+committed in src/assets/. Once the repo is public these resolve everywhere.
+"""
 
 from __future__ import annotations
 
 import re
 
-_CDN  = "https://cdn.metatft.com/cdn-cgi/image"
-_FILE = "https://cdn.metatft.com/file/metatft"
+_GITHUB_RAW = "https://raw.githubusercontent.com/johnzey-dev/tft-stats-api/main/src/assets"
 
 
-# ── URL helpers ───────────────────────────────────────────────────────────────
-
-def _cdn(category: str, name: str, px: int) -> str:
-    return f"{_CDN}/width={px},height={px},format=auto/{_FILE}/{category}/{name.lower()}.png"
+# ── Asset URL helpers ─────────────────────────────────────────────────────────
 
 def _champion_url(character_id: str) -> str:
-    return _cdn("champions", character_id, 48)
+    return f"{_GITHUB_RAW}/champions/{character_id.lower()}.png"
 
 def _item_url(item_id: str) -> str:
-    return _cdn("items", item_id, 24)
+    return f"{_GITHUB_RAW}/items/{item_id.lower()}.png"
 
 def _trait_icon_src(trait_id: str) -> str:
     m = re.match(r"tft\d+_(.*)", trait_id, re.IGNORECASE)
     name = m.group(1) if m else trait_id
-    return f"{_FILE}/traits/{name.lower()}.png"
+    return f"{_GITHUB_RAW}/traits/{name.lower()}.png"
 
 def _stars_src(tier: int) -> str:
-    return f"{_FILE}/tiers/{max(1, min(int(tier), 3))}.png"
+    return f"{_GITHUB_RAW}/tiers/{max(1, min(int(tier), 3))}.png"
 
 
 # ── Colour maps ───────────────────────────────────────────────────────────────
@@ -348,16 +348,13 @@ def _render_player_header(out: list, svg_w: int, player_profile: dict) -> None:
 
     profile_icon_id  = player_profile.get("profile_icon_id") or 1
     profile_icon_url = _xml_escape(
-        player_profile.get("profile_icon_url")
-        or f"{_FILE}/profileicons/profileicon{profile_icon_id}.png"
+        f"{_GITHUB_RAW}/profileicons/profileicon{profile_icon_id}.png"
     )
     wings_url = _xml_escape(
-        player_profile.get("wings_url")
-        or (f"{_FILE}/ranks/wings_{tier_lower}.png" if tier_lower else "")
+        f"{_GITHUB_RAW}/ranks/wings_{tier_lower}.png" if tier_lower else ""
     )
     rank_icon_url = _xml_escape(
-        player_profile.get("rank_icon_url")
-        or (f"{_FILE}/ranks/{tier_lower}.png" if tier_lower else "")
+        f"{_GITHUB_RAW}/ranks/{tier_lower}.png" if tier_lower else ""
     )
 
     out.append(f'<rect x="0" y="0" width="{svg_w}" height="{PROFILE_HEADER_H}" fill="{BG}"/>')
