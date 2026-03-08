@@ -19,10 +19,12 @@
 set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
-PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-VENV_PYTHON="$PROJECT_DIR/venv/bin/python3"
-SERVER_LOG="/tmp/tft-server.log"
-TUNNEL_LOG="/tmp/tft-cloudflared.log"
+PROJECT_DIR="/Users/john/fun-apps/tft-stats-api"
+VENV_PYTHON="/Users/john/fun-apps/tft-stats-api/venv/bin/python3"
+SRC_DIR="/Users/john/fun-apps/tft-stats-api/src"
+SERVER_LOG="/Users/john/fun-apps/tft-stats-api/logs/server.log"
+TUNNEL_LOG="/Users/john/fun-apps/tft-stats-api/logs/cloudflared.log"
+SSH_KEY="/Users/john/.ssh/github_key"
 PORT=5001
 HEALTH_URL="http://localhost:$PORT/tft-stats/euw1/LeeSIUU/SIUU/png"
 
@@ -34,6 +36,20 @@ README_PATH="README.md"          # path inside the profile repo
 IMG_PATTERN='trycloudflare\.com/tft-stats/euw1/LeeSIUU/SIUU/png'
 IMG_REPLACEMENT_SUFFIX="/tft-stats/euw1/LeeSIUU/SIUU/png"
 
+# ── Tool paths ───────────────────────────────────────────────────────────────
+CURL=/usr/bin/curl
+GIT=/usr/bin/git
+GREP=/usr/bin/grep
+SED=/usr/bin/sed
+LSOF=/usr/sbin/lsof
+KILL=/bin/kill
+PKILL=/usr/bin/pkill
+SSH=/usr/bin/ssh
+SSH_ADD=/usr/bin/ssh-add
+SEQ=/usr/bin/seq
+CLOUDFLARED=/opt/homebrew/bin/cloudflared
+NOHUP=/usr/bin/nohup
+
 # ── Colours ───────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
 log()  { echo -e "${CYAN}[watchdog]${NC} $*"; }
@@ -42,24 +58,14 @@ warn() { echo -e "${YELLOW}[ WARN ]${NC} $*"; }
 err()  { echo -e "${RED}[ ERR  ]${NC} $*"; }
 
 # ── Checks ────────────────────────────────────────────────────────────────────
-if ! command -v cloudflared &>/dev/null; then
-  err "cloudflared not found. Install: brew install cloudflared"
+if [[ ! -x "$CLOUDFLARED" ]]; then
+  err "cloudflared not found at $CLOUDFLARED. Install: brew install cloudflared"
   exit 1
 fi
 
-# Ensure ssh-agent is running and github_key is loaded
-SSH_KEY="$HOME/.ssh/github_key"
-if ! ssh-add -l 2>/dev/null | grep -q "$SSH_KEY"; then
-  log "Adding $SSH_KEY to ssh-agent (you'll be prompted for your passphrase) …"
-  ssh-add "$SSH_KEY" || {
-    err "Could not add $SSH_KEY to agent."
-    exit 1
-  }
-fi
-
 # Verify GitHub SSH access (exit code 1 is normal for GitHub SSH — check output instead)
-SSH_TEST=$(ssh -i "$SSH_KEY" -o IdentitiesOnly=yes -T git@github.com 2>&1 || true)
-if ! echo "$SSH_TEST" | grep -q "successfully authenticated"; then
+SSH_TEST=$($SSH -i "$SSH_KEY" -o IdentitiesOnly=yes -T git@github.com 2>&1 || true)
+if ! echo "$SSH_TEST" | $GREP -q "successfully authenticated"; then
   err "SSH to GitHub failed with $SSH_KEY. Make sure it's added to GitHub:"
   echo "  https://github.com/settings/keys"
   echo "  Response: $SSH_TEST"
@@ -69,7 +75,7 @@ ok "GitHub SSH access confirmed"
 
 # ── Step 1: Check if server is healthy ────────────────────────────────────────
 log "Checking server health at $HEALTH_URL …"
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$HEALTH_URL" 2>/dev/null || echo "000")
+HTTP_CODE=$($CURL -s -o /dev/null -w "%{http_code}" --max-time 10 "$HEALTH_URL" 2>/dev/null || echo "000")
 
 if [[ "$HTTP_CODE" == "200" ]]; then
   ok "Server is already healthy (HTTP $HTTP_CODE)"
@@ -82,18 +88,18 @@ fi
 # ── Step 2: (Re)start Flask server if needed ──────────────────────────────────
 if [[ "$SERVER_RUNNING" == false ]]; then
   log "Stopping any process on port $PORT …"
-  lsof -ti :$PORT | xargs kill -9 2>/dev/null && warn "Killed stale process on :$PORT" || true
+  $LSOF -ti :$PORT | xargs $KILL -9 2>/dev/null && warn "Killed stale process on :$PORT" || true
 
   log "Starting Flask server …"
   cd "$PROJECT_DIR"
-  PYTHONPATH=src nohup "$VENV_PYTHON" src/main.py >"$SERVER_LOG" 2>&1 &
+  PYTHONPATH="$SRC_DIR" $NOHUP "$VENV_PYTHON" "$SRC_DIR/main.py" >"$SERVER_LOG" 2>&1 &
   SERVER_PID=$!
   log "Flask PID: $SERVER_PID — waiting for it to be ready …"
 
   # Wait up to 30 seconds for the server to respond
-  for i in $(seq 1 30); do
+  for i in $($SEQ 1 30); do
     sleep 1
-    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$HEALTH_URL" 2>/dev/null || echo "000")
+    HTTP_CODE=$($CURL -s -o /dev/null -w "%{http_code}" --max-time 5 "$HEALTH_URL" 2>/dev/null || echo "000")
     if [[ "$HTTP_CODE" == "200" ]]; then
       ok "Server is up after ${i}s (HTTP $HTTP_CODE)"
       break
@@ -108,20 +114,20 @@ fi
 
 # ── Step 3: Kill old cloudflared tunnel ───────────────────────────────────────
 log "Stopping any existing cloudflared tunnel …"
-pkill -f "cloudflared tunnel" 2>/dev/null && warn "Killed existing cloudflared" || true
+$PKILL -f "cloudflared tunnel" 2>/dev/null && warn "Killed existing cloudflared" || true
 sleep 2
 
 # ── Step 4: Start fresh cloudflared tunnel ────────────────────────────────────
 log "Starting new cloudflared tunnel on port $PORT …"
-cloudflared tunnel --url "http://localhost:$PORT" >"$TUNNEL_LOG" 2>&1 &
+$CLOUDFLARED tunnel --url "http://localhost:$PORT" >"$TUNNEL_LOG" 2>&1 &
 TUNNEL_PID=$!
 log "Cloudflared PID: $TUNNEL_PID — waiting for URL …"
 
 # Extract the trycloudflare.com URL from the log (wait up to 30s)
 TUNNEL_URL=""
-for i in $(seq 1 30); do
+for i in $($SEQ 1 30); do
   sleep 1
-  TUNNEL_URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$TUNNEL_LOG" 2>/dev/null | head -1 || true)
+  TUNNEL_URL=$($GREP -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$TUNNEL_LOG" 2>/dev/null | head -1 || true)
   if [[ -n "$TUNNEL_URL" ]]; then
     ok "Tunnel URL: $TUNNEL_URL"
     break
@@ -138,7 +144,7 @@ log "New image URL: $NEW_IMAGE_URL"
 
 # ── Step 5: Verify tunnel actually reaches the server ────────────────────────
 log "Verifying tunnel …"
-TUNNEL_HTTP=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$NEW_IMAGE_URL" 2>/dev/null || echo "000")
+TUNNEL_HTTP=$($CURL -s -o /dev/null -w "%{http_code}" --max-time 15 "$NEW_IMAGE_URL" 2>/dev/null || echo "000")
 if [[ "$TUNNEL_HTTP" == "200" ]]; then
   ok "Tunnel verified (HTTP $TUNNEL_HTTP)"
 else
@@ -151,8 +157,8 @@ PROFILE_DIR="/tmp/tft-profile-readme"
 
 log "Cloning profile repo via SSH …"
 rm -rf "$PROFILE_DIR"
-export GIT_SSH_COMMAND="ssh -i $SSH_KEY -o IdentitiesOnly=yes"
-if ! git clone --depth 1 "$PROFILE_REPO" "$PROFILE_DIR" 2>&1; then
+export GIT_SSH_COMMAND="$SSH -i $SSH_KEY -o IdentitiesOnly=yes"
+if ! $GIT clone --depth 1 "$PROFILE_REPO" "$PROFILE_DIR" 2>&1; then
   err "SSH clone failed. Make sure your SSH key is added to GitHub:"
   echo "  ssh -T git@github.com"
   exit 1
@@ -176,15 +182,15 @@ fi
 # ── Step 8: Commit and push via SSH ──────────────────────────────────────────
 log "Committing and pushing README via SSH …"
 cd "$PROFILE_DIR"
-git config user.email "watchdog@local"
-git config user.name "TFT Watchdog"
-git add "$README_PATH"
+$GIT config user.email "watchdog@local"
+$GIT config user.name "TFT Watchdog"
+$GIT add "$README_PATH"
 
-if git diff --cached --quiet; then
+if $GIT diff --cached --quiet; then
   warn "Nothing to commit — README already has this URL."
 else
-  git commit -m "chore: update TFT stats image URL [watchdog]"
-  if GIT_SSH_COMMAND="ssh -i $SSH_KEY -o IdentitiesOnly=yes" git push origin main 2>&1; then
+  $GIT commit -m "chore: update TFT stats image URL [watchdog]"
+  if GIT_SSH_COMMAND="$SSH -i $SSH_KEY -o IdentitiesOnly=yes" $GIT push origin main 2>&1; then
     ok "README pushed to GitHub via SSH."
   else
     err "git push failed. Check SSH key permissions."
