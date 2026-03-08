@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 import requests
@@ -14,6 +15,18 @@ log = logging.getLogger(__name__)
 
 stats_bp: Blueprint      = Blueprint("stats", __name__)
 stats_service: StatsService = StatsService()
+
+_START_TIME = time.time()
+
+
+# ── Health ───────────────────────────────────────────────────────────────────
+
+@stats_bp.route("/health", methods=["GET"])
+def health() -> tuple[Any, int]:
+    return jsonify({
+        "status": "ok",
+        "uptime_seconds": round(time.time() - _START_TIME),
+    }), 200
 
 
 # ── Error handler helper ─────────────────────────────────────────────────────
@@ -144,16 +157,20 @@ def get_player_svg(
 def get_player_png(
     platform: str, game_name: str, tag_line: str
 ) -> Response | tuple[Any, int]:
-    """Return a PNG of the last 5 games — works on GitHub profiles."""
+    """Return a PNG of the last 5 games — fetches fresh data before rendering."""
     log.info("PNG (5-game) request: %s/%s/%s", platform, game_name, tag_line)
     try:
+        # Fetch + cache fresh match data exactly like the main stats endpoint
+        stats_service.get_stats(platform, game_name, tag_line)
         puuid = stats_service.resolve_puuid(platform, game_name, tag_line)
     except (requests.exceptions.HTTPError, requests.exceptions.RequestException) as exc:
         return _handle_riot_error(exc)
+    except (ValueError, KeyError) as exc:
+        return jsonify({"error": str(exc)}), 400
 
     recent = stats_service.get_recent_matches(puuid)
     if not recent:
-        return jsonify({"error": "No cached matches found. Call the stats endpoint first."}), 404
+        return jsonify({"error": "No matches found."}), 404
 
     try:
         profile = stats_service.get_player_profile(platform, game_name, tag_line, puuid)

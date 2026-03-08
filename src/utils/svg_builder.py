@@ -353,9 +353,6 @@ def _render_player_header(out: list, svg_w: int, player_profile: dict) -> None:
     wings_url = _xml_escape(
         f"{_GITHUB_RAW}/ranks/wings_{tier_lower}.png" if tier_lower else ""
     )
-    rank_icon_url = _xml_escape(
-        f"{_GITHUB_RAW}/ranks/{tier_lower}.png" if tier_lower else ""
-    )
 
     out.append(f'<rect x="0" y="0" width="{svg_w}" height="{PROFILE_HEADER_H}" fill="{BG}"/>')
 
@@ -390,30 +387,47 @@ def _render_player_header(out: list, svg_w: int, player_profile: dict) -> None:
     )
 
     rank_line_y = y0 + 128
-    if rank_icon_url:
-        out.append(
-            f'<image href="{rank_icon_url}" '
-            f'x="{center_x - 86}" y="{rank_line_y - 18}" width="20" height="20"/>'
-        )
+    # Build rank text — cairosvg doesn't honour per-tspan font-weight,
+    # so we render rank+division and LP as two separate <text> elements
+    # and measure approximate widths to keep them visually centered together.
+    if tier_title and tier_title != "Unranked":
+        rank_str   = f"{_xml_escape(tier_title)} {division}".strip()
+        rank_color = tier_color
+    else:
+        rank_str   = "Unranked"
+        rank_color = "#8a8fa8"
+
+    lp_str = f"  {_xml_escape(lp_text)}" if lp_text else ""
+
+    # Render as a single bold text line — LP in lighter colour via tspan
     out.append(
         f'<text x="{center_x}" y="{rank_line_y}" '
-        f'font-family="Arial,sans-serif" font-size="16" font-weight="700" '
-        f'text-anchor="middle" fill="{tier_color}">{_xml_escape(tier_title)} '
-        f'<tspan fill="#e9edf9">{division}</tspan>'
-        f'<tspan fill="#9aa4c5"> | {lp_text}</tspan></text>'
+        f'font-family="Arial,sans-serif" font-size="15" font-weight="700" '
+        f'text-anchor="middle" fill="{rank_color}">{rank_str}'
+        f'<tspan fill="#9aa4c5" font-weight="400">{lp_str}</tspan></text>'
     )
 
+    # "Ranked" label and region badge on the same line, centered as a group
+    badge_w   = 38
+    gap       = 8   # gap between "Ranked" text and badge
+    # approximate "Ranked" text width at font-size 13 bold ≈ 52px
+    ranked_w  = 52
+    group_w   = ranked_w + gap + badge_w
+    ranked_x  = center_x - group_w // 2 + ranked_w // 2
+    badge_x   = center_x - group_w // 2 + ranked_w + gap
+    label_y   = y0 + 152
+
     out.append(
-        f'<text x="{center_x - 10}" y="{y0 + 150}" '
+        f'<text x="{ranked_x}" y="{label_y}" '
         f'font-family="Arial,sans-serif" font-size="13" font-weight="600" '
-        f'text-anchor="end" fill="#b8bfd8">{queue_label}</text>'
+        f'text-anchor="middle" fill="#b8bfd8">{queue_label}</text>'
     )
     out.append(
-        f'<rect x="{center_x + 2}" y="{y0 + 135}" width="44" height="20" rx="6" fill="#575e74" opacity="0.9"/>'
+        f'<rect x="{badge_x}" y="{label_y - 14}" width="{badge_w}" height="18" rx="5" fill="#575e74" opacity="0.9"/>'
     )
     out.append(
-        f'<text x="{center_x + 24}" y="{y0 + 149}" '
-        f'font-family="Arial,sans-serif" font-size="12" font-weight="700" '
+        f'<text x="{badge_x + badge_w // 2}" y="{label_y}" '
+        f'font-family="Arial,sans-serif" font-size="11" font-weight="700" '
         f'text-anchor="middle" fill="#f3f5ff">{platform}</text>'
     )
 

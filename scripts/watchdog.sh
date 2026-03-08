@@ -47,19 +47,22 @@ if ! command -v cloudflared &>/dev/null; then
   exit 1
 fi
 
-# Ensure ssh-agent is running and the key is loaded (handles passphrase keys)
-if ! ssh-add -l &>/dev/null; then
-  log "No keys in ssh-agent — adding default key (you'll be prompted for your passphrase) …"
-  ssh-add ~/.ssh/id_ed25519 2>/dev/null || ssh-add ~/.ssh/id_rsa 2>/dev/null || ssh-add 2>/dev/null || {
-    err "Could not add SSH key to agent. Run manually: ssh-add ~/.ssh/your_key"
+# Ensure ssh-agent is running and github_key is loaded
+SSH_KEY="$HOME/.ssh/github_key"
+if ! ssh-add -l 2>/dev/null | grep -q "$SSH_KEY"; then
+  log "Adding $SSH_KEY to ssh-agent (you'll be prompted for your passphrase) …"
+  ssh-add "$SSH_KEY" || {
+    err "Could not add $SSH_KEY to agent."
     exit 1
   }
 fi
 
-# Verify GitHub SSH access
-if ! ssh -T git@github.com 2>&1 | grep -q "successfully authenticated"; then
-  err "SSH to GitHub failed. Make sure your key is added to GitHub:"
+# Verify GitHub SSH access (exit code 1 is normal for GitHub SSH — check output instead)
+SSH_TEST=$(ssh -i "$SSH_KEY" -o IdentitiesOnly=yes -T git@github.com 2>&1 || true)
+if ! echo "$SSH_TEST" | grep -q "successfully authenticated"; then
+  err "SSH to GitHub failed with $SSH_KEY. Make sure it's added to GitHub:"
   echo "  https://github.com/settings/keys"
+  echo "  Response: $SSH_TEST"
   exit 1
 fi
 ok "GitHub SSH access confirmed"
@@ -148,6 +151,7 @@ PROFILE_DIR="/tmp/tft-profile-readme"
 
 log "Cloning profile repo via SSH …"
 rm -rf "$PROFILE_DIR"
+export GIT_SSH_COMMAND="ssh -i $SSH_KEY -o IdentitiesOnly=yes"
 if ! git clone --depth 1 "$PROFILE_REPO" "$PROFILE_DIR" 2>&1; then
   err "SSH clone failed. Make sure your SSH key is added to GitHub:"
   echo "  ssh -T git@github.com"
@@ -180,7 +184,7 @@ if git diff --cached --quiet; then
   warn "Nothing to commit — README already has this URL."
 else
   git commit -m "chore: update TFT stats image URL [watchdog]"
-  if git push origin main 2>&1; then
+  if GIT_SSH_COMMAND="ssh -i $SSH_KEY -o IdentitiesOnly=yes" git push origin main 2>&1; then
     ok "README pushed to GitHub via SSH."
   else
     err "git push failed. Check SSH key permissions."
