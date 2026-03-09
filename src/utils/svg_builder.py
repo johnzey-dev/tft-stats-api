@@ -91,8 +91,8 @@ PORT_BORDER  = 2
 STARS_H      = 13
 STARS_GAP    = 2
 
-# Items
-ITEM_PX      = 18
+# Items  (max 3 per unit; size chosen so 3 items + 2 gaps = UNIT_PX)
+ITEM_PX      = (48 - 2 * 2) // 3   # = 14px — fits exactly within the unit portrait
 ITEM_GAP     = 2
 ITEMS_V_GAP  = 3
 
@@ -246,26 +246,25 @@ def _render_row(out: list, match_data: dict, y0: int, svg_w: int, row_index: int
         item_y = port_y + UNIT_PX + ITEMS_V_GAP
         if items:
             n   = len(items)
-            ipx = min(ITEM_PX, (UNIT_PX - (n - 1) * ITEM_GAP) // n)
-            total_items_w = n * ipx + (n - 1) * ITEM_GAP
+            total_items_w = n * ITEM_PX + (n - 1) * ITEM_GAP
             ix0 = ux + (UNIT_PX - total_items_w) // 2
 
             for j, it in enumerate(items):
-                ix    = ix0 + j * (ipx + ITEM_GAP)
+                ix    = ix0 + j * (ITEM_PX + ITEM_GAP)
                 iclip = f"clip{row_index}u{idx}i{j}"
                 iurl  = _item_url(it.get("item_id") or "")
 
                 out.append(
                     f'<defs><clipPath id="{iclip}">'
-                    f'<rect x="{ix}" y="{item_y}" width="{ipx}" height="{ipx}" rx="2"/>'
+                    f'<rect x="{ix}" y="{item_y}" width="{ITEM_PX}" height="{ITEM_PX}" rx="2"/>'
                     f'</clipPath></defs>'
                 )
                 out.append(
-                    f'<rect x="{ix}" y="{item_y}" width="{ipx}" height="{ipx}" fill="#111" rx="2"/>'
+                    f'<rect x="{ix}" y="{item_y}" width="{ITEM_PX}" height="{ITEM_PX}" fill="#111" rx="2"/>'
                 )
                 out.append(
                     f'<image href="{iurl}" x="{ix}" y="{item_y}" '
-                    f'width="{ipx}" height="{ipx}" clip-path="url(#{iclip})"/>'
+                    f'width="{ITEM_PX}" height="{ITEM_PX}" clip-path="url(#{iclip})"/>'
                 )
 
 
