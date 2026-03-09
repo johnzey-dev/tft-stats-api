@@ -1,16 +1,13 @@
-from schemas.riot import AccountSchema, SummonerSchema, LeagueEntrySchema
 from schemas.match import ItemSchema, TraitSchema, UnitSchema, MatchSchema
-from schemas.player import SetSummarySchema, PlayerProfileSchema, StatsResponseSchema
+from schemas.metatft import MetaTFTProfile
+from schemas.player import SetSummarySchema, PlayerProfileSchema
 
 __all__ = [
-    "AccountSchema",
-    "SummonerSchema",
-    "LeagueEntrySchema",
     "ItemSchema",
     "TraitSchema",
     "UnitSchema",
     "MatchSchema",
+    "MetaTFTProfile",
     "SetSummarySchema",
     "PlayerProfileSchema",
-    "StatsResponseSchema",
 ]

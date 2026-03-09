@@ -1,9 +1,7 @@
-"""Pydantic schemas for player profile and stats response."""
+"""Pydantic schemas for player profile."""
 
 from __future__ import annotations
-from pydantic import BaseModel, Field
-
-from schemas.match import MatchSchema
+from pydantic import BaseModel
 
 
 class SetSummarySchema(BaseModel):
@@ -23,13 +21,3 @@ class PlayerProfileSchema(BaseModel):
     rank:             str | None = None
     lp:               int | None = None
     set_summary:      SetSummarySchema | None = None
-
-
-class StatsResponseSchema(BaseModel):
-    """Full JSON response returned by GET /tft-stats/<platform>/<game_name>/<tag_line>."""
-
-    summoner: dict = Field(default_factory=dict)
-    ranked:   dict = Field(default_factory=dict)
-    average_placement:        float | None = None
-    average_placement_sample: int = 0
-    last_matches:             list[MatchSchema] = Field(default_factory=list)

@@ -2,8 +2,6 @@ import logging
 
 from flask import Flask
 from dotenv import load_dotenv
-from config.settings import Config
-from extensions import db, migrate
 from api.routes.stats import stats_bp
 
 load_dotenv()
@@ -15,13 +13,6 @@ logging.basicConfig(
 )
 
 app = Flask(__name__)
-app.config.from_object(Config)
-
-db.init_app(app)
-migrate.init_app(app, db)
-
-import models  # noqa: F401 – registers all models with SQLAlchemy / Alembic
-
 app.register_blueprint(stats_bp)
 
 if __name__ == '__main__':
