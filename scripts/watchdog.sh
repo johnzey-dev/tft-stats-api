@@ -26,15 +26,15 @@ SERVER_LOG="/Users/john/fun-apps/tft-stats-api/logs/server.log"
 TUNNEL_LOG="/Users/john/fun-apps/tft-stats-api/logs/cloudflared.log"
 SSH_KEY="/Users/john/.ssh/github_key"
 PORT=5001
-HEALTH_URL="http://localhost:$PORT/tft-stats/euw1/LeeSIUU/SIUU/png"
+HEALTH_URL="http://localhost:$PORT/tft-stats/euw1/LeeSIUU/SIUU/16/png"
 
 # GitHub profile repo (the special <username>/<username> repo)
 GITHUB_USER="johnzey-dev"
 README_PATH="README.md"          # path inside the profile repo
 
 # The image src line pattern to replace in README.md
-IMG_PATTERN='trycloudflare\.com/tft-stats/euw1/LeeSIUU/SIUU/png'
-IMG_REPLACEMENT_SUFFIX="/tft-stats/euw1/LeeSIUU/SIUU/png"
+IMG_PATTERN='trycloudflare\.com/tft-stats/euw1/LeeSIUU/SIUU/16/png'
+IMG_REPLACEMENT_SUFFIX="/tft-stats/euw1/LeeSIUU/SIUU/16/png"
 
 # ── Tool paths ───────────────────────────────────────────────────────────────
 CURL=/usr/bin/curl
